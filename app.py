@@ -142,7 +142,8 @@ def score_players(d, mapping, threshold=60, min_hp=100, min_matches=10, min_tota
     names=mapping.dropna(subset=['player_id','player_name']).drop_duplicates('player_id').set_index('player_id').player_name.to_dict()
     def role(role, idc, hpcol, ballcol, impactcol, runcol, dismissalcol, expectedcol):
         q=x[x[ballcol]].copy(); hp=q[q[hpcol]].copy(); normal=q[~q[hpcol]].copy()
-        if hp.empty: return pd.DataFrame()
+      if hp.empty:
+    return pd.DataFrame(columns=['player_name', 'player_id', 'rank'])
         # Player pressure and normal aggregates.
         h=hp.groupby(idc).agg(hp_balls=(ballcol,'size'),hp_matches=('match_id','nunique'),hp_runs=(runcol,'sum'),hp_outs=(dismissalcol,'sum'),hp_impact=(impactcol,'sum'))
         n=normal.groupby(idc).agg(normal_balls=(ballcol,'size'),normal_runs=(runcol,'sum'),normal_outs=(dismissalcol,'sum'))
@@ -151,7 +152,9 @@ def score_players(d, mapping, threshold=60, min_hp=100, min_matches=10, min_tota
         a=h.join(n,how='left').join(cons,how='left').fillna({'normal_balls':0,'normal_runs':0,'normal_outs':0,'positive_match_pct':0,'impact_match_sd':0})
         a['total_role_balls']=a.hp_balls+a.normal_balls
         a=a[(a.hp_balls>=min_hp)&(a.hp_matches>=min_matches)&(a.total_role_balls>=min_total)].copy()
-        if a.empty: return a
+      if a.empty:
+    a['player_name'] = pd.Series(dtype='object')
+    return a
         if role=='batter':
             a['hp_rate']=100*a.hp_runs/a.hp_balls; a['normal_rate']=100*a.normal_runs/a.normal_balls.replace(0,np.nan)
             a['personal_uplift']=a.hp_rate-a.normal_rate
@@ -255,7 +258,9 @@ if 'supeRR3' in st.session_state:
             st.download_button('Download all bowler scorecards',bowl.to_csv(index=False),'SupeRR_3_0_All_Bowlers.csv','text/csv')
         else: st.warning('No bowlers qualify with the current strict eligibility settings.')
     with tabs[2]:
-        pool=sorted(set(bat.player_name.tolist()+bowl.player_name.tolist()))
+       bat_names = bat['player_name'].tolist() if 'player_name' in bat.columns else []
+bowl_names = bowl['player_name'].tolist() if 'player_name' in bowl.columns else []
+pool = sorted(set(bat_names + bowl_names))
         if pool:
             chosen=st.selectbox('Choose a player',pool)
             rows=[]
