@@ -191,7 +191,7 @@ with st.sidebar:
 with st.expander('Methodology and assumptions', expanded=False):
     st.markdown('''**Combined selection:** IPL and T20I deliveries are pooled for the final two rankings. Format remains a model feature and is used in diagnostics.\n\n**Proposed rating:** 40% contextual impact + 35% personal uplift + 25% consistency. Components are player percentiles. Reliability shrinks ratings toward 50 using both pressure-ball and pressure-match evidence.\n\n**Pressure:** Separate batting and bowling scores use chase difficulty, wickets, innings progress, phase and transparent responsibility/context proxies. First-innings par run rate is estimated from the supplied data by format, phase and wicket band.\n\n**Limitations:** Batting order is an imperfect responsibility proxy. The 6-run wicket value and component weights are analyst assumptions. First-innings par is a descriptive benchmark, not a pitch-adjusted target. Super overs are excluded.''')
 
-DATA_DIR = Path(__file__).parent / 'data'
+DATA_DIR = Path(__file__).parent
 
 @st.cache_data(show_spinner=False)
 def load_bundled_data():
