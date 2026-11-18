@@ -134,56 +134,110 @@ def chronological_predictions(d):
 def percentile(s, higher=True):
     return s.rank(pct=True, ascending=higher)*100
 
-def score_players(d, mapping, threshold=60, min_hp=100, min_matches=10, min_total=250, wicket_value=6):
-    x=d[d.exp_bat_runs.notna()].copy()
-    x['bat_hp']=x.bat_pressure.ge(threshold); x['bowl_hp']=x.bowl_pressure.ge(threshold)
-    x['bat_impact']=x.runs-x.exp_bat_runs+wicket_value*(x.p_batter_out-x.batter_out)
-    x['bowl_impact']=x.exp_bowl_runs-x.bowler_conceded+wicket_value*(x.bowler_wicket-x.p_bowler_wicket)
-    names=mapping.dropna(subset=['player_id','player_name']).drop_duplicates('player_id').set_index('player_id').player_name.to_dict()
-    def role(role, idc, hpcol, ballcol, impactcol, runcol, dismissalcol, expectedcol):
-        q=x[x[ballcol]].copy(); hp=q[q[hpcol]].copy(); normal=q[~q[hpcol]].copy()
 
-    if hp.empty:
-        return pd.DataFrame(columns=['player_name', 'player_id', 'rank'])
+def score_players(d, mapping, threshold=55, min_hp=100, min_matches=10, min_total=250, wicket_value=6):
+    x = d[d.exp_bat_runs.notna()].copy()
+    if x.empty:
+        raise ValueError("No delivery rows have contextual model predictions.")
 
-    return pd.DataFrame(columns=['player_name', 'player_id', 'rank'])
-        # Player pressure and normal aggregates.
-        h=hp.groupby(idc).agg(hp_balls=(ballcol,'size'),hp_matches=('match_id','nunique'),hp_runs=(runcol,'sum'),hp_outs=(dismissalcol,'sum'),hp_impact=(impactcol,'sum'))
-        n=normal.groupby(idc).agg(normal_balls=(ballcol,'size'),normal_runs=(runcol,'sum'),normal_outs=(dismissalcol,'sum'))
-        pm=hp.groupby([idc,'match_id'])[impactcol].sum().reset_index()
-        cons=pm.groupby(idc).agg(positive_match_pct=(impactcol,lambda s:100*(s>0).mean()),impact_match_sd=(impactcol,'std'))
-        a=h.join(n,how='left').join(cons,how='left').fillna({'normal_balls':0,'normal_runs':0,'normal_outs':0,'positive_match_pct':0,'impact_match_sd':0})
-        a['total_role_balls']=a.hp_balls+a.normal_balls
-        a=a[(a.hp_balls>=min_hp)&(a.hp_matches>=min_matches)&(a.total_role_balls>=min_total)].copy()
-      if a.empty:
-    a['player_name'] = pd.Series(dtype='object')
-    return a
-        if role=='batter':
-            a['hp_rate']=100*a.hp_runs/a.hp_balls; a['normal_rate']=100*a.normal_runs/a.normal_balls.replace(0,np.nan)
-            a['personal_uplift']=a.hp_rate-a.normal_rate
-            a['hp_dismissal_pct']=100*a.hp_outs/a.hp_balls
+    x['bat_hp'] = x.bat_pressure.ge(threshold)
+    x['bowl_hp'] = x.bowl_pressure.ge(threshold)
+    x['bat_impact'] = x.runs - x.exp_bat_runs + wicket_value * (x.p_batter_out - x.batter_out)
+    x['bowl_impact'] = x.exp_bowl_runs - x.bowler_conceded + wicket_value * (x.bowler_wicket - x.p_bowler_wicket)
+
+    required_mapping_cols = {'player_id', 'player_name'}
+    if not required_mapping_cols.issubset(mapping.columns):
+        raise ValueError("Player mapping file must contain player_id and player_name columns.")
+    names = (
+        mapping.dropna(subset=['player_id', 'player_name'])
+        .drop_duplicates('player_id')
+        .set_index('player_id')['player_name']
+        .to_dict()
+    )
+
+    def role(role_name, idc, hpcol, ballcol, impactcol, runcol, dismissalcol):
+        q = x[x[ballcol]].copy()
+        hp = q[q[hpcol]].copy()
+        normal = q[~q[hpcol]].copy()
+
+        if hp.empty:
+            return pd.DataFrame(columns=['rank', 'player_id', 'player_name'])
+
+        h = hp.groupby(idc).agg(
+            hp_balls=(ballcol, 'size'),
+            hp_matches=('match_id', 'nunique'),
+            hp_runs=(runcol, 'sum'),
+            hp_outs=(dismissalcol, 'sum'),
+            hp_impact=(impactcol, 'sum')
+        )
+
+        n = normal.groupby(idc).agg(
+            normal_balls=(ballcol, 'size'),
+            normal_runs=(runcol, 'sum'),
+            normal_outs=(dismissalcol, 'sum')
+        )
+
+        pm = hp.groupby([idc, 'match_id'])[impactcol].sum().reset_index()
+        cons = pm.groupby(idc).agg(
+            positive_match_pct=(impactcol, lambda values: 100 * (values > 0).mean()),
+            impact_match_sd=(impactcol, 'std')
+        )
+
+        a = h.join(n, how='left').join(cons, how='left').fillna({
+            'normal_balls': 0,
+            'normal_runs': 0,
+            'normal_outs': 0,
+            'positive_match_pct': 0,
+            'impact_match_sd': 0
+        })
+
+        a['total_role_balls'] = a.hp_balls + a.normal_balls
+        a = a[
+            (a.hp_balls >= min_hp) &
+            (a.hp_matches >= min_matches) &
+            (a.total_role_balls >= min_total)
+        ].copy()
+
+        if a.empty:
+            a['player_name'] = pd.Series(dtype='object')
+            a = a.reset_index().rename(columns={idc: 'player_id'})
+            a.insert(0, 'rank', pd.Series(dtype='int64'))
+            return a
+
+        if role_name == 'batter':
+            a['hp_rate'] = 100 * a.hp_runs / a.hp_balls
+            a['normal_rate'] = 100 * a.normal_runs / a.normal_balls.replace(0, np.nan)
+            a['personal_uplift'] = a.hp_rate - a.normal_rate
+            a['hp_dismissal_pct'] = 100 * a.hp_outs / a.hp_balls
         else:
-            # For bowlers, runcol is conceded runs; rates are per 6 legal balls.
-            a['hp_rate']=6*a.hp_runs/a.hp_balls; a['normal_rate']=6*a.normal_runs/a.normal_balls.replace(0,np.nan)
-            a['personal_uplift']=a.normal_rate-a.hp_rate
-            a['hp_dismissal_pct']=100*a.hp_outs/a.hp_balls
-        a['impact_per100']=100*a.hp_impact/a.hp_balls
-        a['impact_pct']=percentile(a.impact_per100)
-        a['uplift_pct']=percentile(a.personal_uplift.fillna(0))
-        a['consistency_pct']=percentile(a.positive_match_pct)
-        a['raw_rating']=.40*a.impact_pct+.35*a.uplift_pct+.25*a.consistency_pct
-        # Confidence combines pressure balls and pressure matches, each capped.
-        ball_conf=a.hp_balls/(a.hp_balls+150)
-        match_conf=a.hp_matches/(a.hp_matches+10)
-        a['reliability']=np.sqrt(ball_conf*match_conf)
-        a['rating']=50+(a.raw_rating-50)*a.reliability
-        a['player_name']=[names.get(i,str(i)) for i in a.index]
-        a=a.sort_values(['rating','hp_matches','hp_balls'],ascending=False).reset_index().rename(columns={idc:'player_id'})
-        a.insert(0,'rank',range(1,len(a)+1))
+            a['hp_rate'] = 6 * a.hp_runs / a.hp_balls
+            a['normal_rate'] = 6 * a.normal_runs / a.normal_balls.replace(0, np.nan)
+            a['personal_uplift'] = a.normal_rate - a.hp_rate
+            a['hp_dismissal_pct'] = 100 * a.hp_outs / a.hp_balls
+
+        a['impact_per100'] = 100 * a.hp_impact / a.hp_balls
+        a['impact_pct'] = percentile(a.impact_per100)
+        a['uplift_pct'] = percentile(a.personal_uplift.fillna(0))
+        a['consistency_pct'] = percentile(a.positive_match_pct)
+        a['raw_rating'] = 0.40 * a.impact_pct + 0.35 * a.uplift_pct + 0.25 * a.consistency_pct
+
+        ball_conf = a.hp_balls / (a.hp_balls + 150)
+        match_conf = a.hp_matches / (a.hp_matches + 10)
+        a['reliability'] = np.sqrt(ball_conf * match_conf)
+        a['rating'] = 50 + (a.raw_rating - 50) * a.reliability
+        a['player_name'] = [names.get(player_id, str(player_id)) for player_id in a.index]
+        a = (
+            a.sort_values(['rating', 'hp_matches', 'hp_balls'], ascending=False)
+            .reset_index()
+            .rename(columns={idc: 'player_id'})
+        )
+        a.insert(0, 'rank', range(1, len(a) + 1))
         return a
-    bat=role('batter','striker_id','bat_hp','batter_ball','bat_impact','runs','batter_out','exp_bat_runs')
-    bowl=role('bowler','bowler_id','bowl_hp','legal_ball','bowl_impact','bowler_conceded','bowler_wicket','exp_bowl_runs')
-    return bat,bowl,x
+
+    bat = role('batter', 'striker_id', 'bat_hp', 'batter_ball', 'bat_impact', 'runs', 'batter_out')
+    bowl = role('bowler', 'bowler_id', 'bowl_hp', 'legal_ball', 'bowl_impact', 'bowler_conceded', 'bowler_wicket')
+    return bat, bowl, x
+
 
 with st.sidebar:
     st.header('3.0 model settings')
@@ -261,17 +315,32 @@ if 'supeRR3' in st.session_state:
             st.download_button('Download all bowler scorecards',bowl.to_csv(index=False),'SupeRR_3_0_All_Bowlers.csv','text/csv')
         else: st.warning('No bowlers qualify with the current strict eligibility settings.')
     with tabs[2]:
-       bat_names = bat['player_name'].tolist() if 'player_name' in bat.columns else []
-bowl_names = bowl['player_name'].tolist() if 'player_name' in bowl.columns else []
-pool = sorted(set(bat_names + bowl_names))
+        st.subheader("Player Comparison")
+
+        bat_names = bat["player_name"].dropna().tolist() if "player_name" in bat.columns else []
+        bowl_names = bowl["player_name"].dropna().tolist() if "player_name" in bowl.columns else []
+        pool = sorted(set(bat_names + bowl_names))
+
         if pool:
-            chosen=st.selectbox('Choose a player',pool)
-            rows=[]
-            for role_name,df in [('Batter',bat),('Bowler',bowl)]:
-                r=df[df.player_name.eq(chosen)]
-                if len(r): rows.append(r.assign(role=role_name))
-            if rows: st.dataframe(pd.concat(rows,ignore_index=True).round(2),hide_index=True,width="stretch")
-            else: st.info('This player is not eligible in the selected role.')
+            chosen = st.selectbox("Choose a player", pool)
+            rows = []
+            for role_name, player_df in [("Batter", bat), ("Bowler", bowl)]:
+                if "player_name" in player_df.columns:
+                    selected = player_df[player_df["player_name"].eq(chosen)]
+                    if not selected.empty:
+                        rows.append(selected.assign(role=role_name))
+
+            if rows:
+                st.dataframe(
+                    pd.concat(rows, ignore_index=True).round(2),
+                    hide_index=True,
+                    width="stretch"
+                )
+            else:
+                st.info("This player is not eligible in the selected role.")
+        else:
+            st.info("No eligible players are available for comparison. Review the eligibility settings.")
+
     with tabs[3]:
         st.plotly_chart(px.histogram(d,x='bat_pressure',nbins=25,title='Batting pressure distribution'),width="stretch")
         st.plotly_chart(px.histogram(d,x='bowl_pressure',nbins=25,title='Bowling pressure distribution'),width="stretch")
