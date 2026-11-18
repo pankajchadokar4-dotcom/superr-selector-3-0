@@ -142,7 +142,10 @@ def score_players(d, mapping, threshold=60, min_hp=100, min_matches=10, min_tota
     names=mapping.dropna(subset=['player_id','player_name']).drop_duplicates('player_id').set_index('player_id').player_name.to_dict()
     def role(role, idc, hpcol, ballcol, impactcol, runcol, dismissalcol, expectedcol):
         q=x[x[ballcol]].copy(); hp=q[q[hpcol]].copy(); normal=q[~q[hpcol]].copy()
-      if hp.empty:
+
+    if hp.empty:
+        return pd.DataFrame(columns=['player_name', 'player_id', 'rank'])
+
     return pd.DataFrame(columns=['player_name', 'player_id', 'rank'])
         # Player pressure and normal aggregates.
         h=hp.groupby(idc).agg(hp_balls=(ballcol,'size'),hp_matches=('match_id','nunique'),hp_runs=(runcol,'sum'),hp_outs=(dismissalcol,'sum'),hp_impact=(impactcol,'sum'))
