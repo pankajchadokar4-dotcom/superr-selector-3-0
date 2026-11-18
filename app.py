@@ -241,16 +241,16 @@ if 'supeRR3' in st.session_state:
     with tabs[0]:
         st.subheader('Combined IPL + T20I batter ranking')
         if len(bat):
-            st.dataframe(bat.head(10).round(2),hide_index=True,use_container_width=True)
-            st.plotly_chart(px.bar(bat.head(10),x='player_name',y='rating',title='Top 10 batter ratings'),use_container_width=True)
+            st.dataframe(bat.head(10).round(2),hide_index=True,width="stretch")
+            st.plotly_chart(px.bar(bat.head(10),x='player_name',y='rating',title='Top 10 batter ratings'),width="stretch")
             st.download_button('Download Top 10 batters CSV',bat.head(10).to_csv(index=False),'SupeRR_3_0_Top10_Batters.csv','text/csv')
             st.download_button('Download all batter scorecards',bat.to_csv(index=False),'SupeRR_3_0_All_Batters.csv','text/csv')
         else: st.warning('No batters qualify with the current strict eligibility settings.')
     with tabs[1]:
         st.subheader('Combined IPL + T20I bowler ranking')
         if len(bowl):
-            st.dataframe(bowl.head(10).round(2),hide_index=True,use_container_width=True)
-            st.plotly_chart(px.bar(bowl.head(10),x='player_name',y='rating',title='Top 10 bowler ratings'),use_container_width=True)
+            st.dataframe(bowl.head(10).round(2),hide_index=True,width="stretch")
+            st.plotly_chart(px.bar(bowl.head(10),x='player_name',y='rating',title='Top 10 bowler ratings'),width="stretch")
             st.download_button('Download Top 10 bowlers CSV',bowl.head(10).to_csv(index=False),'SupeRR_3_0_Top10_Bowlers.csv','text/csv')
             st.download_button('Download all bowler scorecards',bowl.to_csv(index=False),'SupeRR_3_0_All_Bowlers.csv','text/csv')
         else: st.warning('No bowlers qualify with the current strict eligibility settings.')
@@ -262,15 +262,15 @@ if 'supeRR3' in st.session_state:
             for role_name,df in [('Batter',bat),('Bowler',bowl)]:
                 r=df[df.player_name.eq(chosen)]
                 if len(r): rows.append(r.assign(role=role_name))
-            if rows: st.dataframe(pd.concat(rows,ignore_index=True).round(2),hide_index=True,use_container_width=True)
+            if rows: st.dataframe(pd.concat(rows,ignore_index=True).round(2),hide_index=True,width="stretch")
             else: st.info('This player is not eligible in the selected role.')
     with tabs[3]:
-        st.plotly_chart(px.histogram(d,x='bat_pressure',nbins=25,title='Batting pressure distribution'),use_container_width=True)
-        st.plotly_chart(px.histogram(d,x='bowl_pressure',nbins=25,title='Bowling pressure distribution'),use_container_width=True)
+        st.plotly_chart(px.histogram(d,x='bat_pressure',nbins=25,title='Batting pressure distribution'),width="stretch")
+        st.plotly_chart(px.histogram(d,x='bowl_pressure',nbins=25,title='Bowling pressure distribution'),width="stretch")
         st.download_button('Download delivery-level pressure data',scored.to_csv(index=False),'SupeRR_3_0_Pressure_Deliveries.csv','text/csv')
     with tabs[4]:
         st.subheader('Chronological out-of-sample model validation')
-        st.dataframe(metrics,hide_index=True,use_container_width=True)
+        st.dataframe(metrics,hide_index=True,width="stretch")
         st.caption('Lower MAE and Brier scores are better. Each model fold is now shown beside a training-mean baseline; ML should only be credited where it improves on that baseline.')
         # Format diagnostic: compare pressure sample and eligibility contributions, not separate final lists.
         st.subheader('Format contribution diagnostic')
